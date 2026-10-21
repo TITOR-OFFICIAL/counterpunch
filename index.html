@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="color-scheme" content="dark">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Контрудар</title>
+    <link rel="stylesheet" href="core.css">
+    <style>
+        :root { color-scheme: dark; }
+        :root {
+            --bg: #05060c;
+            --c-straight: #ffd23f;
+            --c-hook: #3fb6ff;
+            --c-upper: #ff5a4f;
+            --c-block: #c9d1e8;
+            --gold: #ffd23f;
+            --r-c: #a9b4cf; --r-r: #4fa3ff; --r-e: #b56bff; --r-l: #ffb020;
+        }
+        .screen.wide { max-width: 980px; }
+        .scroll { overflow-y: auto; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
+        #scrGame { max-width: none; padding: 0; }
+        #wrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #05060c; }
+        #canvas { image-rendering: pixelated; image-rendering: crisp-edges; touch-action: none; display: block; }
+        canvas.px, img.px { image-rendering: pixelated; image-rendering: crisp-edges; }
+
+        .topbar { width: 100%; display: flex; align-items: center; gap: 10px; padding: 6px 4px; }
+        .topbar .grow { flex: 1; }
+        .topbar .ttl { font-weight: 900; font-size: 18px; }
+        .coins { font-weight: 900; color: var(--gold); font-size: 16px; white-space: nowrap; }
+        #gameTop { position: absolute; top: 0; left: 0; right: 0; justify-content: space-between; padding: 6px 8px; pointer-events: none; }
+        #gameTop .icon-btn { pointer-events: auto; width: 34px; height: 34px; font-size: 15px; background: rgba(0,0,0,0.45); }
+
+        /* Кнопки боя */
+        #controls { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between; align-items: flex-end;
+                    padding: 0 max(10px, 2vw) max(10px, 2.5vh); pointer-events: none; }
+        .punches { display: flex; gap: max(8px, 1.2vw); }
+        .ctl { position: relative; pointer-events: auto; width: clamp(66px, 10.5vw, 112px); height: clamp(66px, 10.5vw, 112px); border-radius: 18px;
+               border: 3px solid var(--c); background: rgba(8, 10, 22, 0.78); color: #fff; cursor: pointer;
+               display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+               box-shadow: 0 4px 14px rgba(0,0,0,0.5), inset 0 0 14px color-mix(in srgb, var(--c) 25%, transparent); touch-action: none; }
+        .ctl .ic { width: clamp(24px, 3.8vw, 38px); height: clamp(24px, 3.8vw, 38px); color: var(--c); }
+        [data-icon] svg { width: 100%; height: 100%; display: block; }
+        .rules b { display: inline-flex; align-items: center; gap: 5px; }
+        .ri { width: 18px; height: 18px; display: inline-block; }
+        .ctl .nm { font-size: clamp(10px, 1.4vw, 15px); font-weight: 900; }
+        .ctl .hn { font-size: clamp(8px, 1vw, 11px); color: #aab3d3; font-weight: 700; }
+        .ctl .key { position: absolute; top: 4px; right: 7px; font-size: 10px; color: #7d86a8; font-weight: 700; }
+        .ctl.down { transform: scale(0.93); background: color-mix(in srgb, var(--c) 30%, rgba(8,10,22,0.8)); }
+        .ctl.off { opacity: 0.38; }
+        .ctl.glow { animation: glow 0.45s infinite alternate; }
+        @keyframes glow { from { box-shadow: 0 0 0 0 var(--c); } to { box-shadow: 0 0 22px 6px var(--c); } }
+        .ctl[data-a="straight"] { --c: var(--c-straight); }
+        .ctl[data-a="hook"] { --c: var(--c-hook); }
+        .ctl[data-a="upper"] { --c: var(--c-upper); }
+        .ctl[data-a="block"] { --c: var(--c-block); }
+        @media (hover: none) { .ctl .key { display: none; } }
+
+        /* Меню */
+        .menu-title { margin-top: 4vh; font-size: clamp(30px, 6vw, 56px); font-weight: 900; letter-spacing: 1px; text-align: center;
+                      color: var(--gold); text-shadow: 3px 3px 0 #b3261e, 6px 6px 0 rgba(0,0,0,0.5); }
+        .menu-sub { color: var(--muted); font-size: 13px; margin-top: 4px; text-align: center; }
+        .menu-info { display: flex; gap: 18px; justify-content: center; margin-top: 2vh; font-size: 14px; color: #c6cde6; font-weight: 700; }
+        .menu-hero { display: flex; gap: 6px; justify-content: center; align-items: flex-end; margin-top: 2vh; height: 26vh; }
+        .menu-hero canvas { height: 100%; image-rendering: pixelated; }
+        .menu-buttons { width: 100%; max-width: 460px; display: flex; flex-direction: column; gap: 10px; margin-top: auto; margin-bottom: 3vh; }
+        .menu-buttons .row { display: flex; gap: 10px; }
+
+        /* Карточки (бойцы, тренеры, усиления) */
+        .cards { display: grid; gap: 8px; width: 100%; }
+        .card { position: relative; border-radius: 12px; border: 2px solid var(--rc, var(--btn-border)); background: var(--card); padding: 6px 6px 8px;
+                display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center; cursor: pointer; min-width: 0; }
+        .card .pic { width: 100%; aspect-ratio: 1; display: flex; align-items: flex-end; justify-content: center; overflow: hidden;
+                     border-radius: 8px; background: radial-gradient(circle at 50% 70%, color-mix(in srgb, var(--rc) 35%, #12162b) 0%, #0b0e1d 75%); }
+        .card .pic canvas, .card .pic img { height: 100%; max-width: 100%; image-rendering: pixelated; }
+        .card .nm { font-weight: 900; font-size: 13px; line-height: 1.15; }
+        .card .rr { font-size: 10px; font-weight: 800; color: var(--rc); text-transform: uppercase; letter-spacing: 0.5px; }
+        .card .ds { font-size: 10.5px; color: #b5bedc; line-height: 1.25; }
+        .card .lv { position: absolute; top: 4px; right: 6px; font-size: 10px; font-weight: 900; color: var(--gold); text-shadow: 0 1px 2px #000; }
+        .card.locked { opacity: 0.45; cursor: default; }
+        .card.locked .pic > * { filter: brightness(0) opacity(0.55); }
+        .card.sel { box-shadow: 0 0 0 2px #fff, 0 0 18px color-mix(in srgb, var(--rc) 70%, transparent); }
+        .card.sel::after { content: '✓'; position: absolute; top: 4px; left: 7px; font-weight: 900; color: #7be08b; }
+        .rc-c { --rc: var(--r-c); } .rc-r { --rc: var(--r-r); } .rc-e { --rc: var(--r-e); } .rc-l { --rc: var(--r-l); }
+
+        /* Подготовка */
+        .setup { width: 100%; display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 0; }
+        .sec-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); font-weight: 800; margin-top: 4px; }
+        .hlist { display: flex; gap: 8px; overflow-x: auto; touch-action: pan-x; padding-bottom: 4px; }
+        .hlist .card { flex: 0 0 104px; }
+        .setup-foot { display: flex; gap: 10px; margin-top: auto; padding-top: 6px; }
+
+        /* Забег */
+        .run { width: 100%; flex: 1; min-height: 0; display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 12px; }
+        .run .panel { padding: 10px; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+        .track { display: flex; gap: 5px; align-items: center; }
+        .track i { flex: 1; height: 10px; border-radius: 5px; background: rgba(255,255,255,0.12); }
+        .track i.done { background: #7be08b; }
+        .track i.cur { background: var(--gold); box-shadow: 0 0 8px var(--gold); }
+        .track i.boss { outline: 2px solid var(--r-l); }
+        .opp-card { display: flex; gap: 10px; align-items: stretch; min-height: 0; }
+        .opp-card canvas { height: 150px; image-rendering: pixelated; }
+        .opp-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+        .opp-name { font-size: 20px; font-weight: 900; }
+        .trait { font-size: 12px; line-height: 1.3; color: #c6cde6; }
+        .trait b { color: #ff9b6b; }
+        .hpbar { height: 10px; border-radius: 5px; background: #3a1416; overflow: hidden; }
+        .hpbar > div { height: 100%; background: #e8473a; }
+        .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+        .chip { font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 10px; border: 1px solid var(--rc); color: #e8ecf8; background: rgba(0,0,0,0.25); }
+        .who { display: flex; gap: 8px; align-items: center; font-size: 13px; font-weight: 800; }
+        .who img, .who canvas { width: 40px; height: 40px; border-radius: 8px; image-rendering: pixelated; background: #0b0e1d; object-fit: contain; }
+        .run-foot { display: flex; gap: 10px; margin-top: auto; }
+
+        /* Контракты */
+        .tabs { display: flex; gap: 6px; }
+        .tab { padding: 7px 14px; border-radius: 10px; border: 1px solid var(--btn-border); background: rgba(255,255,255,0.05); font-weight: 800; cursor: pointer; }
+        .tab.on { background: var(--btn); border-color: var(--gold); }
+        .ct-grid { grid-template-columns: repeat(6, 1fr); }
+        .ct-foot { width: 100%; display: flex; gap: 10px; align-items: center; padding-top: 6px; }
+        .ct-foot .btn { width: auto; flex: 1; }
+        .rates { font-size: 10.5px; color: var(--muted); line-height: 1.3; }
+        .btn.pulse { animation: pulse 0.9s infinite alternate; }
+        @keyframes pulse { from { box-shadow: 0 0 0 0 rgba(150,201,61,0.6); } to { box-shadow: 0 0 22px 4px rgba(150,201,61,0.6); } }
+        .badge-dot { position: relative; }
+        .badge-dot::after { content: '!'; position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%;
+                            background: #ff5a4f; color: #fff; font-size: 13px; font-weight: 900; display: flex; align-items: center; justify-content: center; }
+        .item-card { width: 170px; margin: 0 auto; }
+
+        /* Модалки */
+        .modal-card { max-width: 440px; max-height: 96vh; overflow-y: auto; touch-action: pan-y; }
+        .modal-card.wide { max-width: 640px; }
+        .perk-grid { grid-template-columns: repeat(3, 1fr); }
+        .perk-grid .card { padding: 10px 8px; gap: 6px; }
+        .perk-grid .nm { font-size: 14px; }
+        .perk-grid .ds { font-size: 12px; }
+        .rules { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; text-align: left; font-size: 14px; align-items: center; }
+        .rules b { white-space: nowrap; }
+        .y { color: var(--c-straight); } .bl { color: var(--c-hook); } .r { color: var(--c-upper); } .g { color: var(--c-block); }
+        .stat-line { font-size: 13px; color: #b5bedc; }
+        .pull-card { width: 180px; margin: 0 auto; }
+        .pull-card .pic { animation: reveal 0.6s ease-out; }
+        @keyframes reveal { from { transform: scale(0.4) rotate(-8deg); opacity: 0; } to { transform: none; opacity: 1; } }
+        .row2 { display: flex; gap: 10px; }
+
+        #rotate { position: fixed; inset: 0; z-index: 500; background: #05060c; display: none; flex-direction: column; gap: 14px;
+                  align-items: center; justify-content: center; text-align: center; padding: 24px; font-weight: 800; font-size: 18px; }
+        #rotate .big { font-size: 54px; }
+        @media (orientation: portrait) and (max-width: 700px) { #rotate { display: flex; } }
+        @media (max-height: 460px) {
+            .menu-title { margin-top: 1vh; font-size: 32px; }
+            .menu-hero { height: 30vh; margin-top: 1vh; }
+            .modal-card { padding: 12px 14px; gap: 6px; max-width: 560px; }
+            .modal-title { font-size: 20px; }
+            .modal-desc, .rules { font-size: 12px; line-height: 1.3; }
+            .rules { gap: 3px 10px; }
+            .modal-card .btn { padding: 9px 14px; font-size: 15px; }
+            .opp-card canvas { height: 120px; }
+            .card .ds { display: none; }
+            .perk-grid .card .ds { display: block; }
+            .item-card .ds, .pull-card .ds { display: block; font-size: 12px; }
+            .btn { padding: 10px 14px; font-size: 15px; }
+        }
+    </style>
+
+    <!-- Сборка для Пикабу Игр: подключается собственный SDK Пикабу (PkbSDK) -->
+    <script>window.PIKABU_BUILD = true;</script>
+</head>
+<body>
+
+<!-- Меню -->
+<div class="screen wide active" id="scrMenu">
+    <div class="topbar"><div class="coins" id="menuCoins"></div><div class="grow"></div><button class="icon-btn" data-lang-toggle style="font-size:13px;font-weight:800;margin-right:8px">RU</button><button class="icon-btn" data-sound>🔊</button></div>
+    <div class="menu-title" data-i18n="game_title">Контрудар</div>
+    <div class="menu-sub" data-i18n="menu_sub"></div>
+    <div class="menu-hero" id="menuHero"></div>
+    <div class="menu-info"><span id="menuBest"></span></div>
+    <div class="menu-buttons">
+        <button class="btn primary" id="btnRun"></button>
+        <div class="row">
+            <button class="btn" id="btnContracts" data-i18n="contracts">Контракты</button>
+            <button class="btn ghost" id="btnRules" data-i18n="how_to">Как играть</button>
+        </div>
+    </div>
+</div>
+
+<!-- Подготовка к забегу -->
+<div class="screen wide" id="scrSetup">
+    <div class="topbar"><button class="icon-btn" id="setupBack">←</button><div class="ttl" data-i18n="setup_title"></div><div class="grow"></div><div class="coins" id="setupCoins"></div></div>
+    <div class="setup scroll">
+        <div class="sec-title" data-i18n="pick_fighter"></div>
+        <div class="hlist" id="setupFighters"></div>
+        <div class="sec-title" data-i18n="pick_trainer"></div>
+        <div class="hlist" id="setupTrainers"></div>
+        <button class="btn ghost" id="setupMore" data-i18n="setup_more" style="font-size:13px;padding:8px"></button>
+        <div class="setup-foot"><button class="btn primary" id="btnStartRun" data-i18n="start_run">Начать забег</button></div>
+    </div>
+</div>
+
+<!-- Карта забега -->
+<div class="screen wide" id="scrRun">
+    <div class="topbar"><button class="icon-btn" id="runMenu">←</button><div class="ttl" id="runTitle"></div><div class="grow"></div><div class="coins" id="runCoins"></div></div>
+    <div class="track" id="runTrack" style="width:100%"></div>
+    <div class="run" style="margin-top:8px">
+        <div class="panel">
+            <div class="sec-title" data-i18n="next_opp"></div>
+            <div class="opp-card">
+                <canvas id="runOppPic" width="97" height="119"></canvas>
+                <div class="opp-info scroll"><div class="opp-name" id="runOppName"></div><div id="runOppTraits"></div></div>
+            </div>
+        </div>
+        <div class="panel scroll">
+            <div class="who" id="runWho"></div>
+            <div class="stat-line" id="runHpText"></div>
+            <div class="hpbar"><div id="runHpBar"></div></div>
+            <div class="sec-title" data-i18n="your_perks"></div>
+            <div class="chips" id="runPerks"></div>
+            <div class="run-foot">
+                <button class="btn ghost" id="btnGiveUp" data-i18n="give_up" style="flex:0.6">Сдаться</button>
+                <button class="btn primary" id="btnFight" data-i18n="fight">В бой</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Контракты -->
+<div class="screen wide" id="scrContracts">
+    <div class="topbar"><button class="icon-btn" id="ctBack">←</button><div class="ttl" data-i18n="contracts_title"></div>
+        <div class="tabs" style="margin-left:10px"><div class="tab on" data-tab="f" data-i18n="tab_fighters"></div><div class="tab" data-tab="t" data-i18n="tab_trainers"></div></div>
+        <div class="grow"></div><div class="coins" id="ctCoins"></div></div>
+    <div class="cards ct-grid scroll" id="ctGrid" style="flex:1;min-height:0;align-content:start"></div>
+    <div class="ct-foot">
+        <div class="rates" id="ctRates" style="flex:1.4"></div>
+        <button class="btn" id="btnPullAd"></button>
+        <button class="btn primary" id="btnPull"></button>
+    </div>
+</div>
+
+<!-- Бой -->
+<div class="screen" id="scrGame">
+    <div id="wrap"><canvas id="canvas"></canvas></div>
+    <div class="topbar" id="gameTop">
+        <button class="icon-btn" id="btnExit">✕</button>
+        <button class="icon-btn" data-sound>🔊</button>
+    </div>
+    <div id="controls">
+        <button class="ctl" data-a="block"><span class="key">Space</span><span class="ic" data-icon="block"></span><span class="nm" data-i18n="block">Блок</span><span class="hn" data-i18n="block_hint"></span></button>
+        <div class="punches">
+            <button class="ctl" data-a="straight"><span class="key">1</span><span class="ic" data-icon="straight"></span><span class="nm" data-i18n="straight">Прямой</span><span class="hn" data-i18n="straight_hint"></span></button>
+            <button class="ctl" data-a="hook"><span class="key">2</span><span class="ic" data-icon="hook"></span><span class="nm" data-i18n="hook">Хук</span><span class="hn" data-i18n="hook_hint"></span></button>
+            <button class="ctl" data-a="upper"><span class="key">3</span><span class="ic" data-icon="upper"></span><span class="nm" data-i18n="upper">Апперкот</span><span class="hn" data-i18n="upper_hint"></span></button>
+        </div>
+    </div>
+</div>
+
+<!-- Правила -->
+<div class="modal-overlay" id="mdRules">
+    <div class="modal-card">
+        <div class="modal-title" data-i18n="rules_title">Как драться</div>
+        <div class="modal-desc" data-i18n="rules_intro"></div>
+        <div class="rules">
+            <b class="y"><span class="ri" data-icon="straight"></span><span data-i18n="straight">Прямой</span></b><span data-i18n="rule_straight"></span>
+            <b class="bl"><span class="ri" data-icon="hook"></span><span data-i18n="hook">Хук</span></b><span data-i18n="rule_hook"></span>
+            <b class="r"><span class="ri" data-icon="upper"></span><span data-i18n="upper">Апперкот</span></b><span data-i18n="rule_upper"></span>
+            <b class="g"><span class="ri" data-icon="block"></span><span data-i18n="block">Блок</span></b><span data-i18n="rule_block"></span>
+        </div>
+        <div class="modal-desc" data-i18n="rules_perfect"></div>
+        <button class="btn primary" id="rulesOk" data-i18n="got_it">Понятно!</button>
+    </div>
+</div>
+
+<!-- Выбор усиления -->
+<div class="modal-overlay" id="mdPerk">
+    <div class="modal-card wide">
+        <div class="modal-title" data-i18n="perk_title"></div>
+        <div class="stat-line" id="perkInfo"></div>
+        <div class="cards perk-grid" id="perkGrid"></div>
+        <button class="btn" id="btnDouble"><span data-i18n="double_coins">×2 монеты</span><span class="sub">🎬</span></button>
+    </div>
+</div>
+
+<!-- Нокаут -->
+<div class="modal-overlay" id="mdLose">
+    <div class="modal-card">
+        <div class="modal-title" data-i18n="lose_title">Нокаут</div>
+        <div class="modal-desc" id="loseDesc"></div>
+        <div class="stat-line" id="loseStats"></div>
+        <button class="btn primary" id="btnRevive"><span data-i18n="revive">Встать</span><span class="sub">🎬</span></button>
+        <button class="btn ghost" id="btnEndRun" data-i18n="end_run">Закончить забег</button>
+    </div>
+</div>
+
+<!-- Итог забега -->
+<div class="modal-overlay" id="mdRunEnd">
+    <div class="modal-card">
+        <div class="modal-title" id="endTitle"></div>
+        <div class="modal-desc" id="endDesc"></div>
+        <button class="btn primary" id="endNew" data-i18n="run_new">Новый забег</button>
+        <button class="btn ghost" id="endMenu" data-i18n="to_menu">В меню</button>
+    </div>
+</div>
+
+<!-- Новый контракт -->
+<div class="modal-overlay" id="mdPull">
+    <div class="modal-card">
+        <div class="modal-title" id="pullTitle"></div>
+        <div id="pullCard"></div>
+        <button class="btn primary" id="pullOk" data-i18n="great">Отлично</button>
+    </div>
+</div>
+
+<!-- Карточка бойца или тренера -->
+<div class="modal-overlay" id="mdItem">
+    <div class="modal-card">
+        <div id="itemCard"></div>
+        <div class="modal-desc" id="itemDesc"></div>
+        <button class="btn primary" id="itemBuy"></button>
+        <button class="btn" id="itemSelect"></button>
+        <button class="btn ghost" id="itemClose" data-i18n="close">Закрыть</button>
+    </div>
+</div>
+
+<!-- Сдаться в бою / в забеге -->
+<div class="modal-overlay" id="mdExit">
+    <div class="modal-card">
+        <div class="modal-title" id="exitTitle"></div>
+        <div class="modal-desc" id="exitDesc"></div>
+        <button class="btn" id="exitNo" data-i18n="exit_no">Продолжить</button>
+        <button class="btn ghost" id="exitYes" data-i18n="exit_yes">Сдаться</button>
+    </div>
+</div>
+
+<div id="rotate"><div class="big">⟳</div><div data-i18n="rotate">Поверните телефон горизонтально</div></div>
+
+<script src="assets.js"></script>
+<script src="core.js"></script>
+<script src="data.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
