@@ -185,6 +185,54 @@
         return a;
     }
 
+    // ======================================================================
+    // Режим «Математика»: пример вместо значка удара, три ответа на трёх кнопках
+    // ======================================================================
+    const MATH_TIME_BASE = 1.9, MATH_TIME_STEP = 0.12;   // множитель времени замаха: бой 1 — ×1.9, бой 8 — ×2.7
+    const ri = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+    function makeExample(lvl) {
+        let q, a, extra = 0;
+        const kind = lvl <= 1 ? pickOne(['+', '-'])
+            : lvl <= 3 ? pickOne(['+', '-', '+', '-', '×'])
+            : lvl <= 5 ? pickOne(['+', '-', '×', '×', '÷'])
+            : pickOne(['+', '-', '×', '×', '÷', '×']);
+        if (kind === '+') {
+            const hi = [12, 20, 60, 90, 120, 200, 400, 600][lvl] || 600;
+            const x = ri(Math.max(3, hi / 4 | 0), hi - 3), y = ri(3, hi - 3);
+            a = x + y; q = x + ' + ' + y; extra = ri(1, 9);
+        } else if (kind === '-') {
+            const hi = [12, 20, 60, 90, 120, 200, 400, 600][lvl] || 600;
+            const x = ri(Math.max(6, hi / 3 | 0), hi), y = ri(2, x - 1);
+            a = x - y; q = x + ' − ' + y; extra = ri(1, 9);
+        } else if (kind === '×') {
+            const m = [3, 4, 5, 6, 9, 9, 12, 14][lvl] || 14;
+            const x = ri(2, m), y = ri(2, lvl >= 6 ? 9 : Math.min(m, 9));
+            a = x * y; q = x + ' × ' + y; extra = ri(0, 1) ? x : y;
+        } else {
+            const y = ri(2, lvl >= 6 ? 9 : 6), r = ri(2, lvl >= 6 ? 12 : 9);
+            a = r; q = (y * r) + ' ÷ ' + y; extra = y;
+        }
+        // неверные ответы — типичные ошибки: ±1, ±2, ±10, на «лишнее» число
+        const pool = [a + 1, a - 1, a + 2, a - 2, a + 10, a - 10, a + extra, a - extra, a + 3, a - 3];
+        const bad = [];
+        shuffle(pool).forEach(v => { if (bad.length < 2 && v > 0 && v !== a && !bad.includes(v)) bad.push(v); });
+        for (let k = 1; bad.length < 2; k++) { if (!bad.includes(a + 10 + k)) bad.push(a + 10 + k); }
+        return { q, a, bad };
+    }
+    // Новый пример под нужную кнопку: правильный ответ ставим на кнопку контратаки к показанному удару
+    function setMath(shown) {
+        const f = fight;
+        const ex = makeExample(f.spec.mathLvl || 0);
+        const right = answerFor(shown);
+        const others = PUNCHES.filter(k => k !== right);
+        const opts = {};
+        opts[right] = ex.a;
+        opts[others[0]] = ex.bad[0];
+        opts[others[1]] = ex.bad[1];
+        f.mathId = (f.mathId || 0) + 1;
+        f.mathCur = { q: ex.q, opts, id: f.mathId };
+    }
+
     function newFighter(set, side) {
         return {
             set, side, hp: 100, maxHp: 100, sta: 100,
@@ -205,7 +253,7 @@
         o.hp = o.maxHp = spec.hp;
         o.state = 'intro'; o.dur = 1.3; o.t = 0; o.seriesLeft = 0;
         fight = {
-            spec, m, p, o, opts, time: 0, over: false,
+            spec, m, p, o, opts, time: 0, over: false, math: true, mathCur: null, mathId: 0,
             stats: { counters: 0, perfects: 0 }, texts: [], parts: [], shake: 0,
             tutorLeft: spec.tutorial ? 3 : 0, tutorWrong: 0,
             blockHeld: false, combo: 0, fcUsed: false, swUsed: false,
@@ -264,9 +312,11 @@
         }
         o.resolved = false;
         o.tutorSeen = false;
+        if (fight.math) setMath(o.shown);
         // замах ускоряется по ходу боя: от wu0 в начале до wu к концу
         const k = Math.min(1, (1 - o.hp / o.maxHp) * 1.3);
-        const dur = (s.wu0 + (s.wu - s.wu0) * k) * fight.m.foresight * (quick ? 0.6 : 1);
+        const mathMul = fight.math ? MATH_TIME_BASE + MATH_TIME_STEP * (s.mathLvl || 0) : 1;
+        const dur = (s.wu0 + (s.wu - s.wu0) * k) * fight.m.foresight * (quick ? 0.6 : 1) * mathMul;
         oppSet('windup', dur);
         o.pose = 'stance';
     }
@@ -323,7 +373,7 @@
                 break;
             case 'windup': {
                 const f = o.t / o.dur;
-                if (o.feint && o.shown !== o.punch && f >= 0.5) { o.shown = o.punch; snd.tick(); }
+                if (o.feint && o.shown !== o.punch && f >= 0.5) { o.shown = o.punch; snd.tick(); if (fight.math) setMath(o.shown); }
                 if (fight.tutorLeft > 0 && !o.tutorSeen && f >= 0.55) { o.tutorSeen = true; o.tutorPaused = true; snd.tick(); break; }
                 o.dx = Math.round(Math.min(1, f * 3) * 3);          // откидывается назад перед ударом
                 if (o.t >= o.dur) oppStrike();
@@ -597,15 +647,20 @@
             if (o.state === 'windup' && !o.resolved && !o.bluff) hint = answerFor(o.shown);
             if (o.state === 'guard') hint = 'upper';
         }
-        document.querySelectorAll('.ctl').forEach(b => {
+        // математика: пока идёт замах — на кнопках ответы
+        const mc = fight.math && fight.mathCur && o.state === 'windup' && !o.resolved && !fight.over ? fight.mathCur : null;
+        (ctlNodes || (ctlNodes = document.querySelectorAll('.ctl'))).forEach(b => {
             const a = b.dataset.a;
             const off = fight.over || (a !== 'block' && p.sta < punchCost(a, o.state === 'stun'));
             const glow = hint === a;
-            const key = (off ? 1 : 0) + (glow ? 2 : 0);
+            const showMath = !!mc && a !== 'block';
+            const key = (off ? 1 : 0) + (glow ? 2 : 0) + (showMath ? 4 + 8 * mc.id : 0);
             if (!force && ctlCache[a] === key) return;
             ctlCache[a] = key;
             b.classList.toggle('off', off);
             b.classList.toggle('glow', glow);
+            b.classList.toggle('math', showMath);
+            if (showMath) b.querySelector('.ans').textContent = mc.opts[a];
         });
     }
 
@@ -641,7 +696,7 @@
         if (f.side === 'R' && f.state === 'windup') {
             const k = f.t / f.dur;
             const hidden = f.bluff || (fight.spec.silent && k > 0.35);
-            const c = fight.spec.colorHint && !hidden ? COLORS[answerFor(f.shown)] : '#ffffff';
+            const c = fight.spec.colorHint && !hidden && !fight.math ? COLORS[answerFor(f.shown)] : '#ffffff';
             const key = 'tint_' + c;
             if (!set[key]) set[key] = tinted(set.stance, c);
             bx.globalAlpha = 0.1 + 0.22 * Math.abs(Math.sin(time * 14)) * Math.min(1, k * 2);
@@ -653,7 +708,7 @@
     function render() {
         bx.setTransform(1, 0, 0, 1, 0, 0);
         let sx = 0, sy = 0;
-        if (fight && fight.shake > 0) { sx = Math.round(rand(-2, 2)); sy = Math.round(rand(-2, 2)); }
+        // тряска экрана отключена
         bx.translate(sx, sy);
         if (img.arena) bx.drawImage(img.arena, 0, 0, W, H);
         else { bx.fillStyle = '#0b0d18'; bx.fillRect(0, 0, W, H); }
@@ -733,15 +788,51 @@
         if (o.state !== 'windup' || o.resolved) return;
         const k = o.t / o.dur;
         if (o.bluff) {
-            badge(cx, cy, NEUTRAL, o.shown, 1 - k, false, true);
+            if (fight.math && fight.mathCur) drawMathPanel(cx, cy, fight.mathCur.q, NEUTRAL, 1 - k, false, true, null);
+            else badge(cx, cy, NEUTRAL, o.shown, 1 - k, false, true);
             return;
         }
         const hidden = fight.spec.silent && k > 0.35;
         const ans = answerFor(o.shown);
+        if (fight.math && fight.mathCur) {
+            drawMathPanel(cx, cy, hidden ? '? ? ?' : fight.mathCur.q, NEUTRAL, 1 - k, k >= fight.m.perfectFrom, false, null);   // подсказку цветом в математике не даём
+            if (o.tutorPaused) drawTutor(o.shown, ans);
+            return;
+        }
         // цвет кольца — только цвет кнопки-ответа; значок удара соперника всегда белый
         badge(cx, cy, hint && !hidden ? COLORS[ans] : NEUTRAL, hidden ? 'unknown' : o.shown, 1 - k, k >= fight.m.perfectFrom, false);
         if (hint && !hidden) answerChip(cx + 24, cy, ans);
         if (o.tutorPaused) drawTutor(o.shown, ans);
+    }
+    // Пример над соперником: плашка с текстом и полоска времени под ней
+    let ctlNodes = null;
+    function drawMathPanel(cx, cy, text, color, left, perfect, dashed, chip) {
+        ctx.font = '900 15px "Segoe UI", Roboto, Arial, sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        const w = Math.max(58, ctx.measureText(text).width + 16), h = 24;
+        const x = Math.round(cx - w / 2), y = cy - h / 2 - 1;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(x, y, w, h, 7); else ctx.rect(x, y, w, h);
+        ctx.fillStyle = 'rgba(8,10,22,0.88)';
+        ctx.fill();
+        ctx.lineWidth = perfect ? 2.5 : 1.5;
+        ctx.strokeStyle = perfect ? 'rgba(255,255,255,' + (0.5 + 0.5 * Math.abs(Math.sin(time * 20))) + ')' : 'rgba(255,255,255,0.25)';
+        ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(text, cx, y + h / 2 + 1);
+        // полоска времени
+        ctx.fillStyle = 'rgba(255,255,255,0.15)';
+        ctx.fillRect(x, y + h + 3, w, 3);
+        ctx.fillStyle = color;
+        if (dashed) { ctx.setLineDash([3, 3]); ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x, y + h + 4.5); ctx.lineTo(x + w * Math.max(0, left), y + h + 4.5); ctx.stroke(); ctx.setLineDash([]); }
+        else ctx.fillRect(x, y + h + 3, w * Math.max(0, left), 3);
+        if (chip) {
+            const px = x + w + 13, py = cy;
+            ctx.beginPath(); ctx.arc(px, py, 10, 0, Math.PI * 2); ctx.fillStyle = chip.c; ctx.fill();
+            ctx.font = '900 10px "Segoe UI", Roboto, Arial, sans-serif';
+            ctx.fillStyle = '#10121f';
+            ctx.fillText(String(chip.n), px, py + 1);
+        }
     }
     function answerChip(cx, cy, type) {
         ctx.beginPath();
@@ -751,10 +842,19 @@
         icon(cx, cy, type, '#10121f', 11, 1);
     }
     function drawTutor(punch, ans) {
+        ctx.textBaseline = 'middle';
+        if (fight.math && fight.mathCur) {
+            ctx.fillStyle = 'rgba(5,6,12,0.78)';
+            ctx.fillRect(0, 30, W, 18);
+            ctx.font = '900 12px "Segoe UI", Roboto, Arial, sans-serif';
+            ctx.globalAlpha = 0.75 + 0.25 * Math.abs(Math.sin(time * 6));
+            outlined(Core.t(fight.tutorWrong > 0 ? 'tut_math_wrong' : 'tut_math2'), W / 2, 40, '#ffd23f', 'center');
+            ctx.globalAlpha = 1;
+            return;
+        }
         ctx.fillStyle = 'rgba(5,6,12,0.78)';
         ctx.fillRect(0, 30, W, 30);
         ctx.font = '900 11px "Segoe UI", Roboto, Arial, sans-serif';
-        ctx.textBaseline = 'middle';
         outlined(Core.t('tut_line1', { a: Core.t(punch).toUpperCase() }), W / 2, 39, '#ffffff', 'center');
         ctx.font = '900 12px "Segoe UI", Roboto, Arial, sans-serif';
         ctx.globalAlpha = 0.75 + 0.25 * Math.abs(Math.sin(time * 6));
@@ -868,7 +968,7 @@
         const s = {
             hp: 70 + 20 * t, dmg: Math.round(8 + 1.3 * t), wu0: 1.45 - 0.07 * t, idle: [Math.max(0.5, 1.15 - 0.06 * t), Math.max(0.9, 1.8 - 0.1 * t)],
             w: { straight: 1, hook: 1, upper: 1 }, series: 0, guard: 0, feint: 0, bluff: 0, silent: false, adaptive: false,
-            colorHint: t <= 2, hints: false, tutorial: false, boss: desc.boss
+            colorHint: t <= 2, hints: false, tutorial: false, boss: desc.boss, mathLvl: i
         };
         s.wu = s.wu0 * 0.76;
         if (i === 0 && !Core.data.tutorialDone) {
@@ -1429,6 +1529,6 @@
     // для автотестов
     window.__game = {
         get fight() { return fight; }, press, release, newRun, startRunFight, doPull, rollContract,
-        pickPerk, showRun, computeMods: () => Core.data.run && computeMods(Core.data.run)
+        makeExample, pickPerk, showRun, computeMods: () => Core.data.run && computeMods(Core.data.run)
     };
 })();
