@@ -127,13 +127,22 @@
     // Звук (синтезатор, без файлов)
     // ======================================================================
     class SoundFX {
-        constructor() { this.ctx = null; this.muted = false; this.bgPaused = false; }
+        constructor() { this.ctx = null; this.muted = false; this.bgPaused = false; this.dirty = false; }
         init() {
+            // После рекламы / сворачивания звук контекста мог «умереть» (реклама забирает аудио,
+            // состояние suspended/interrupted или контекст молча не играет). Поэтому после каждой паузы
+            // создаём свежий AudioContext — это то же, что даёт выключить и включить звук вручную.
+            if (this.dirty && this.ctx && !this.muted && !this.bgPaused) {
+                this.dirty = false;
+                const old = this.ctx;
+                this.ctx = null;
+                try { old.close().catch(() => {}); } catch (e) {}
+            }
             if (!this.ctx) {
                 const AC = global.AudioContext || global.webkitAudioContext;
                 if (AC) { try { this.ctx = new AC(); } catch (e) { this.ctx = null; } }
             }
-            if (this.ctx && this.ctx.state === 'suspended' && !this.muted && !this.bgPaused) {
+            if (this.ctx && this.ctx.state !== 'running' && this.ctx.state !== 'closed' && !this.muted && !this.bgPaused) {
                 this.ctx.resume().catch(() => {});
             }
         }
@@ -141,7 +150,7 @@
             this.muted = !!m;
             if (this.ctx) {
                 if (this.muted) this.ctx.suspend().catch(() => {});
-                else if (!this.bgPaused) this.ctx.resume().catch(() => {});
+                else if (!this.bgPaused) { this.dirty = true; this.init(); }
             }
             try { localStorage.setItem(cfg.id + '_muted', this.muted ? '1' : '0'); } catch (e) {}
             if (cfg && cfg.onMuteChange) cfg.onMuteChange(this.muted);
@@ -150,8 +159,8 @@
             if (this.bgPaused === p) return;
             this.bgPaused = p;
             if (!this.ctx) return;
-            if (p) this.ctx.suspend().catch(() => {});
-            else if (!this.muted) this.ctx.resume().catch(() => {});
+            if (p) { this.dirty = true; this.ctx.suspend().catch(() => {}); }
+            else if (!this.muted) this.init();
         }
         tone(freq, type, duration, vol, slideFreq, delay) {
             if (this.muted || this.bgPaused) return;

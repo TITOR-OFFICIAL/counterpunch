@@ -1,0 +1,50 @@
+{
+ "w": 97,
+ "h": 119,
+ "poses": [
+  "stance",
+  "straight",
+  "hook",
+  "upper",
+  "hit",
+  "block"
+ ],
+ "info": {
+  "stance": {
+   "right": 70,
+   "left": 9,
+   "top": 2,
+   "bottom": 117
+  },
+  "straight": {
+   "right": 95,
+   "left": 9,
+   "top": 2,
+   "bottom": 117
+  },
+  "hook": {
+   "right": 89,
+   "left": 9,
+   "top": 3,
+   "bottom": 117
+  },
+  "upper": {
+   "right": 74,
+   "left": 1,
+   "top": 2,
+   "bottom": 117
+  },
+  "hit": {
+   "right": 68,
+   "left": 9,
+   "top": 1,
+   "bottom": 117
+  },
+  "block": {
+   "right": 65,
+   "left": 9,
+   "top": 5,
+   "bottom": 117
+  }
+ }
+}
